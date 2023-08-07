@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import React, { Component, useRef } from 'react';
 import io from 'socket.io-client';
 import { faker } from '@faker-js/faker';
 
@@ -20,6 +20,9 @@ import Modal from 'react-bootstrap/Modal'
 import 'bootstrap/dist/css/bootstrap.css'
 import "./Video.css"
 
+import * as tf from "@tensorflow/tfjs";
+import {drawRect} from "./utilities"; 
+
 const server_url = import.meta.env.VITE_SERVER_SCRIPT_URL;
 
 var connections = {}
@@ -38,9 +41,11 @@ class Video extends Component {
 		super(props)
 
 		this.localVideoref = React.createRef()
+		this.canvasRef = React.createRef()
 
 		this.videoAvailable = false
 		this.audioAvailable = false
+		// this.videoLoaded = false;
 
 		this.state = {
 			video: false,
@@ -86,6 +91,77 @@ class Video extends Component {
 			}
 		} catch(e) { console.log(e) }
 	}
+	
+
+	runCoco = async () => {
+		const net = await tf.loadGraphModel('https://signtalktensorflow.s3.us-south.cloud-object-storage.appdomain.cloud/model.json')
+
+		setInterval(() => {
+		  this.detect(net);
+		}, 16.7);
+	};
+	
+	componentDidMount() {
+		// Agrega un event listener para el evento 'loadedmetadata' del video
+		this.localVideoref.current.addEventListener('canplay', () =>{
+			if (
+			this.videoLoaded &&
+			typeof this.localVideoref.current !== 'undefined' &&
+			this.localVideoref.current !== null &&
+			this.localVideoref.current.video.readyState === 4
+		) {
+			this.detect();
+		}
+		});
+	}
+	  
+    handleVideoLoaded = () => {
+		this.videoLoaded = true;
+	};
+
+	detect = async (net) => {
+		if (
+			typeof this.localVideoref.current !== 'undefined' &&
+			this.localVideoref.current !== null &&
+			this.localVideoref.current.video.readyState === 4
+		) {
+		  const video = this.localVideoref.current.video;
+		  const videoWidth = this.localVideoref.current.video.videoWidth;
+		  const videoHeight = this.localVideoref.current.video.videoHeight;
+	
+		  this.localVideoref.current.video.width = videoWidth;
+		  this.localVideoref.current.video.height = videoHeight;
+	
+		  this.canvasRef.current.width = videoWidth;
+		  this.canvasRef.current.height = videoHeight;
+	
+		  const img = tf.browser.fromPixels(video);
+		  const resized = tf.image.resizeBilinear(img, [640, 480]);
+		  const casted = resized.cast('int32');
+		  const expanded = casted.expandDims(0);
+		  const obj = await net.executeAsync(expanded);
+		  console.log(obj);
+	
+		  const boxes = await obj[1].array();
+		  const classes = await obj[2].array();
+		  const scores = await obj[4].array();
+	
+		  const ctx = this.canvasRef.current.getContext("2d");
+		  requestAnimationFrame(() => {
+			drawRect(boxes[0], classes[0], scores[0], 0.9, videoWidth, videoHeight, ctx);
+		  });
+	
+		  tf.dispose(img);
+		  tf.dispose(resized);
+		  tf.dispose(casted);
+		  tf.dispose(expanded);
+		  tf.dispose(obj);
+		}
+	};
+
+	// componentDidMount() {
+	// 	this.runCoco();
+	// }
 
 	getMedia = () => {
 		this.setState({
@@ -443,6 +519,9 @@ class Video extends Component {
 	}
 
 	render() {
+		console.log("State:", this.state);
+		console.log("loaded?:", this.videoLoaded);
+
 		if(this.isChrome() === false){
 			return (
 				<div style={{background: "white", width: "30%", height: "auto", padding: "20px", minWidth: "400px",
@@ -453,6 +532,7 @@ class Video extends Component {
 		}
 		return (
 			<div>
+
 				{this.state.askForUsername === true ?
 					<div>
 						<div style={{background: "white", width: "30%", height: "auto", padding: "20px", minWidth: "400px",
@@ -524,8 +604,23 @@ class Video extends Component {
 								<video id="my-video" ref={this.localVideoref} autoPlay muted style={{
 									borderStyle: "solid",borderColor: "#bdbdbd",margin: "10px",objectFit: "fill",
 									width: "100%",height: "100%"}}></video>
+								<canvas
+									ref={this.canvasRef}
+									style={{
+									position: "absolute",
+									marginLeft: "auto",
+									marginRight: "auto",
+									left: 0,
+									right: 0,
+									textAlign: "center",
+									zIndex: 8,
+									width: 640,
+									height: 480,
+									}}
+								/>
 							</Row>
 						</div>
+
 					</div>
 				}
 			</div>

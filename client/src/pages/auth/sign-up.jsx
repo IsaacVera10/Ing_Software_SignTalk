@@ -27,7 +27,7 @@ export function SignUp() {
   const registerUser = async (e)  => {
       e.preventDefault();//Para que no se recarge la pagina y la terminal
 
-      console.log(API);//Para comprobar que si escucha a mi API
+      //console.log(API);//Para comprobar que si escucha a mi API
 
       const response = await fetch(`${API}/signup`, {
           method: 'POST',
@@ -40,6 +40,8 @@ export function SignUp() {
       });
 
       const data = await response.json();
+
+      response.
       console.log(data);
       
       //MANEJO DE ERRORES DESDE EL FRONTEND, desde el backend resivimos el response con un atributo message
